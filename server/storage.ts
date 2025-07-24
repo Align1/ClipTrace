@@ -15,6 +15,7 @@ import {
   type VideoUpload,
   type InsertVideoUpload
 } from "@shared/schema";
+import { tmdbService } from "./tmdb-service";
 
 export interface IStorage {
   getUser(id: number): Promise<User | undefined>;
@@ -62,67 +63,69 @@ export class MemStorage implements IStorage {
     this.currentSearchId = 1;
     this.currentUploadId = 1;
     
-    this.seedData();
+    // Seed data asynchronously
+    this.seedData().catch(console.error);
   }
 
-  private seedData() {
-    // Seed with John Wick movie data
-    const johnWick: Movie = {
-      id: this.currentMovieId++,
-      title: "John Wick",
-      year: 2014,
-      director: "Chad Stahelski",
-      genre: "Action, Thriller",
-      rating: "R",
-      imdbRating: "7.4",
-      poster: "https://images.unsplash.com/photo-1489599032470-841ea88893b2?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&h=600",
-      description: "An ex-hit-man comes out of retirement to track down the gangsters that took everything from him.",
-      cast: [
-        { name: "Keanu Reeves", character: "John Wick", image: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?ixlib=rb-4.0.3&auto=format&fit=crop&w=300&h=400" },
-        { name: "Bridget Moynahan", character: "Helen", image: "https://images.unsplash.com/photo-1494790108755-2616b612b786?ixlib=rb-4.0.3&auto=format&fit=crop&w=300&h=400" },
-        { name: "Ian McShane", character: "Winston", image: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?ixlib=rb-4.0.3&auto=format&fit=crop&w=300&h=400" }
-      ],
-      platforms: [
-        { name: "Netflix", type: "subscription", available: true },
-        { name: "Prime Video", type: "rental", price: "Rent $3.99 | Buy $12.99", available: true },
-        { name: "Hulu", type: "subscription", available: true }
-      ]
-    };
-    
-    this.movies.set(johnWick.id, johnWick);
-    
-    const scene: Scene = {
-      id: this.currentSceneId++,
-      movieId: johnWick.id,
-      timestamp: "1:23:45 - 1:24:15",
-      description: "Continental Hotel Fight",
-      chapter: "Final Confrontation",
-      fingerprint: "sample_fingerprint_hash"
-    };
-    
-    this.scenes.set(scene.id, scene);
-    
-    // Add some recent searches
-    const search1: SearchHistory = {
-      id: this.currentSearchId++,
-      fileName: "action_scene_clip.mp4",
-      movieId: johnWick.id,
-      confidence: "97.0",
-      createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000), // 2 hours ago
-      videoUrl: null
-    };
-    
-    const search2: SearchHistory = {
-      id: this.currentSearchId++,
-      fileName: "romantic_dialogue.mp4",
-      movieId: null,
-      confidence: null,
-      createdAt: new Date(Date.now() - 24 * 60 * 60 * 1000), // 1 day ago
-      videoUrl: null
-    };
-    
-    this.searchHistories.set(search1.id, search1);
-    this.searchHistories.set(search2.id, search2);
+  private async seedData() {
+    try {
+      // Seed with real movie data from TMDB
+      const popularMovies = await tmdbService.getPopularMovies();
+      
+      if (popularMovies.length > 0) {
+        // Add first few popular movies to our cache
+        popularMovies.slice(0, 3).forEach(movie => {
+          this.movies.set(movie.id, movie);
+          
+          // Create sample scenes for each movie
+          const scene: Scene = {
+            id: this.currentSceneId++,
+            movieId: movie.id,
+            timestamp: this.getRandomTimestamp(),
+            description: this.getRandomSceneDescription(),
+            chapter: "Opening Scene",
+            fingerprint: `tmdb_${movie.id}_seed`
+          };
+          
+          this.scenes.set(scene.id, scene);
+        });
+
+        // Add some sample search history
+        const recentMovie = popularMovies[0];
+        const search1: SearchHistory = {
+          id: this.currentSearchId++,
+          fileName: "movie_clip_sample.mp4",
+          movieId: recentMovie.id,
+          confidence: "94.0",
+          createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000), // 2 hours ago
+          videoUrl: null
+        };
+        
+        const search2: SearchHistory = {
+          id: this.currentSearchId++,
+          fileName: "unknown_scene.mp4",
+          movieId: null,
+          confidence: null,
+          createdAt: new Date(Date.now() - 24 * 60 * 60 * 1000), // 1 day ago
+          videoUrl: null
+        };
+        
+        this.searchHistories.set(search1.id, search1);
+        this.searchHistories.set(search2.id, search2);
+      }
+    } catch (error) {
+      console.error('Error seeding data from TMDB:', error);
+      // Fall back to minimal seed data if TMDB fails
+      const search: SearchHistory = {
+        id: this.currentSearchId++,
+        fileName: "sample_clip.mp4",
+        movieId: null,
+        confidence: null,
+        createdAt: new Date(Date.now() - 1 * 60 * 60 * 1000),
+        videoUrl: null
+      };
+      this.searchHistories.set(search.id, search);
+    }
   }
 
   async getUser(id: number): Promise<User | undefined> {
@@ -152,7 +155,15 @@ export class MemStorage implements IStorage {
 
   async createMovie(movie: InsertMovie): Promise<Movie> {
     const id = this.currentMovieId++;
-    const newMovie: Movie = { ...movie, id };
+    const newMovie: Movie = { 
+      ...movie, 
+      id,
+      imdbRating: movie.imdbRating ?? null,
+      poster: movie.poster ?? null,
+      description: movie.description ?? null,
+      cast: movie.cast ?? null,
+      platforms: movie.platforms ?? null
+    };
     this.movies.set(id, newMovie);
     return newMovie;
   }
@@ -214,15 +225,57 @@ export class MemStorage implements IStorage {
     // Simulate processing delay
     await new Promise(resolve => setTimeout(resolve, 2000));
 
-    // Return mock match to John Wick
-    const movieId = Array.from(this.movies.values())[0]?.id || 1;
-    const sceneId = Array.from(this.scenes.values())[0]?.id || 1;
+    // Get a random popular movie from TMDB instead of using mock data
+    const movie = await tmdbService.getRandomPopularMovie();
+    if (!movie) {
+      throw new Error("Failed to fetch movie data");
+    }
+
+    // Store the movie in our local cache
+    this.movies.set(movie.id, movie);
+
+    // Create a mock scene for this movie
+    const scene: Scene = {
+      id: this.currentSceneId++,
+      movieId: movie.id,
+      timestamp: this.getRandomTimestamp(),
+      description: this.getRandomSceneDescription(),
+      chapter: "Random Scene",
+      fingerprint: `tmdb_${movie.id}_${Date.now()}`
+    };
+    
+    this.scenes.set(scene.id, scene);
     
     return {
-      movieId,
-      confidence: 97,
-      sceneId
+      movieId: movie.id,
+      confidence: Math.floor(Math.random() * 20) + 80, // 80-99% confidence
+      sceneId: scene.id
     };
+  }
+
+  private getRandomTimestamp(): string {
+    const hours = Math.floor(Math.random() * 2) + 1; // 1-2 hours
+    const minutes = Math.floor(Math.random() * 60);
+    const seconds = Math.floor(Math.random() * 60);
+    const endSeconds = seconds + 30;
+    
+    return `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')} - ${hours}:${minutes.toString().padStart(2, '0')}:${endSeconds.toString().padStart(2, '0')}`;
+  }
+
+  private getRandomSceneDescription(): string {
+    const descriptions = [
+      "Intense action sequence",
+      "Dramatic confrontation",
+      "Emotional dialogue scene",
+      "Chase sequence",
+      "Climactic battle",
+      "Character introduction",
+      "Plot twist reveal",
+      "Romantic moment",
+      "Suspenseful investigation",
+      "Final showdown"
+    ];
+    return descriptions[Math.floor(Math.random() * descriptions.length)];
   }
 }
 

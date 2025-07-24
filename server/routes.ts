@@ -1,9 +1,15 @@
-import type { Express } from "express";
+import type { Express, Request } from "express";
 import { createServer, type Server } from "http";
 import multer from "multer";
 import path from "path";
 import { storage } from "./storage";
+import { tmdbService } from "./tmdb-service";
 import { insertVideoUploadSchema, insertSearchHistorySchema } from "@shared/schema";
+
+// Extend Request type for multer
+interface MulterRequest extends Request {
+  file?: Express.Multer.File;
+}
 
 const upload = multer({
   dest: 'uploads/',
@@ -34,7 +40,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Upload video file
-  app.post("/api/upload-video", upload.single('video'), async (req, res) => {
+  app.post("/api/upload-video", upload.single('video'), async (req: MulterRequest, res) => {
     try {
       if (!req.file) {
         return res.status(400).json({ message: "No video file provided" });
@@ -181,6 +187,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching movies:", error);
       res.status(500).json({ message: "Failed to fetch movies" });
+    }
+  });
+
+  // Search movies via TMDB
+  app.get("/api/search/movies", async (req, res) => {
+    try {
+      const { q } = req.query;
+      
+      if (!q || typeof q !== 'string') {
+        return res.status(400).json({ message: "Search query is required" });
+      }
+
+      const movies = await tmdbService.searchMovies(q);
+      res.json(movies);
+    } catch (error) {
+      console.error("Error searching movies:", error);
+      res.status(500).json({ message: "Failed to search movies" });
     }
   });
 
