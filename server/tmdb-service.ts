@@ -1,3 +1,6 @@
+import { config } from "dotenv";
+config(); // Ensure environment variables are loaded
+
 import type { Movie, InsertMovie } from "@shared/schema";
 
 interface TMDBMovie {
@@ -49,8 +52,12 @@ export class TMDBService {
     this.apiKey = process.env.TMDB_API_KEY || '';
     this.isEnabled = !!this.apiKey;
     
+    console.log('TMDB API Key loaded:', this.apiKey ? 'Yes' : 'No');
+    
     if (!this.isEnabled) {
       console.warn('TMDB_API_KEY not found. TMDB features will be disabled and fallback to mock data.');
+    } else {
+      console.log('TMDB API service enabled successfully');
     }
   }
 
