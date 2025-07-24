@@ -1,5 +1,6 @@
 import { pgTable, text, serial, integer, boolean, timestamp, jsonb, decimal } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
+import { relations } from "drizzle-orm";
 import { z } from "zod";
 
 export const users = pgTable("users", {
@@ -49,6 +50,26 @@ export const videoUploads = pgTable("video_uploads", {
   duration: integer("duration"),
   createdAt: timestamp("created_at").defaultNow(),
 });
+
+// Relations
+export const moviesRelations = relations(movies, ({ many }) => ({
+  scenes: many(scenes),
+  searchHistory: many(searchHistory),
+}));
+
+export const scenesRelations = relations(scenes, ({ one }) => ({
+  movie: one(movies, {
+    fields: [scenes.movieId],
+    references: [movies.id],
+  }),
+}));
+
+export const searchHistoryRelations = relations(searchHistory, ({ one }) => ({
+  movie: one(movies, {
+    fields: [searchHistory.movieId],
+    references: [movies.id],
+  }),
+}));
 
 export const insertUserSchema = createInsertSchema(users).pick({
   username: true,
